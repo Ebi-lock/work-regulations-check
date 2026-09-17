@@ -234,11 +234,17 @@ def main():
     if not a.law and not a.law_id:
         ap.error("法令を指定してください（--list で一覧）")
 
+    articles = list(a.articles)
     if a.law_id:
+        # --law-id を使うと法令名のスロットが空くので、最初の位置引数は条番号になる。
+        # ここで拾わないと、指定した条が黙って落ちる。
+        if a.law:
+            articles.insert(0, a.law)
         law_id, short, full = a.law_id, a.law_id, a.law_id
     else:
         law_id, full = resolve(a.law)
         short = ALIASES.get(a.law, a.law)
+    a.articles = articles
 
     params = {"response_format": "json"}
     if a.asof:

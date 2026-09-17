@@ -142,8 +142,9 @@ python3 scripts/model_rules.py --version-info         # 版と出典URL
 掲載ページ:
 https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/koyou_roudou/roudoukijun/zigyonushi/model/index.html
 
-育児・介護休業関係は本体に含まれない部分があるため、必要なら
-厚労省が別に公開している「育児・介護休業等に関する規則の規定例」を WebSearch で探す。
+育児・介護休業関係はモデル就業規則本体に含まれないため、**`--source ikuji`** を使う
+（厚労省「育児・介護休業等に関する規則の規定例」を同じスクリプトから引ける）。
+産後パパ育休、子の看護等休暇、柔軟な働き方の措置などはこちらにしかない。
 
 ## 3. レポートへの書き方
 

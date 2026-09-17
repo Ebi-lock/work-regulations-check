@@ -46,12 +46,72 @@ def kanji_to_int(s):
 
 
 def fmt(n, branch):
-    return f"第{n}条" + (f"の{branch}" if branch else "")
+    if not branch:
+        return f"第{n}条"
+    if isinstance(branch, int):
+        branch = (branch,)
+    return f"第{n}条" + "".join(f"の{b}" for b in branch)
 
 
-# 「第三十二条の二（服務）」「第 32 条の2」などを拾う
+PARA_RE = re.compile(r'^\s*第\s*([' + NUM_CHARS + r']+)\s*項')
+
+
+def para_of(line, pos):
+    """「第67条第3項」の項番号を拾う。無ければ None。"""
+    m = PARA_RE.match(line[pos:pos + 10])
+    return kanji_to_int(m.group(1)) if m else None
+
+
+NUMBERED_PARA_RE = re.compile(r'^\s*([０-９0-9]{1,2}|[一-九十]{1,3})[　 ]')
+
+
+def count_paragraphs(lines, articles):
+    """各条が何項まであるかを数える。
+
+    項番号は本文側に「2　」「３　」の形で振られる。第1項は番号が無いのが通例なので、
+    見つかった最大の番号か、無ければ1を返す。行頭の箇条書き番号と紛れうるため、
+    あくまで目安として扱い、超過している参照だけを報告する。"""
+    spans = []
+    for idx, a in enumerate(articles):
+        end = articles[idx + 1]['line'] - 1 if idx + 1 < len(articles) else len(lines)
+        spans.append((a, a['line'], end))
+
+    out = {}
+    for a, start, end in spans:
+        mx = 1
+        for ln in lines[start:end]:
+            m = NUMBERED_PARA_RE.match(ln)
+            if m:
+                v = kanji_to_int(m.group(1))
+                if v and 1 < v <= 30:
+                    mx = max(mx, v)
+        out[(a['num'], a['branch'])] = mx
+    return out
+
+
+# 「第三十二条の二（服務）」「第 32 条の2」「第66条の8の2」などを拾う。
+# 枝番は多段になることがあるので繰り返しで受ける。1段しか見ないと
+# 「第66条の8の2」が「第66条の8」に化けて、別の条を指しているように見える。
 ART_RE = re.compile(
-    r'第\s*([' + NUM_CHARS + r']+)\s*条(?:\s*の\s*([' + NUM_CHARS + r']+))?')
+    r'第\s*([' + NUM_CHARS + r']+)\s*条((?:\s*の\s*[' + NUM_CHARS + r']+)*)')
+BRANCH_RE = re.compile(r'の\s*([' + NUM_CHARS + r']+)')
+
+# 「労働安全衛生法第66条の8」のように、直前に法令名が来る参照は外部法令。
+# 規程内部の条番号と混ぜると、実在しない参照切れを大量に報告することになる。
+EXT_LAW_RE = re.compile(
+    r'(?:[一-龥ァ-ヴA-Za-z0-9・ー]{2,30}?(?:法|令|規則|条例|協定|指針)'
+    r'(?:施行(?:令|規則))?)\s*$')
+
+# 条見出しは「（休職）第9条 …」のように括弧書きが同じ行の前に来ることがある。
+# 行頭からこれだけなら、条文の定義行とみなす。
+CAPTION_PREFIX_RE = re.compile(r'^[（(][^（）()。]{1,40}[)）]\s*$')
+
+# 行頭にあっても定義とは限らない。「第67条第3項から第5項までの規定を準用する」は
+# 準用の参照であって、第67条をそこで定義しているわけではない。
+# 条番号の直後がこれらで続くなら参照として扱う。
+REF_FOLLOW_RE = re.compile(
+    r'^\s*(?:第\s*[' + NUM_CHARS + r']+\s*[項号]|から|まで|及び|並びに|又は|若しくは|'
+    r'の規定|に規定|に定め|による|により|に基づ|の定め|乃至|・|、|～|〜)')
 CHAP_RE = re.compile(
     r'第\s*([' + NUM_CHARS + r']+)\s*(章|編|節)\s*(.{0,30})')
 
@@ -61,7 +121,7 @@ HEADING_ONLY_RE = re.compile(r'^[（(]\s*(.{1,30}?)\s*[)）]$')
 
 def parse(text):
     lines = text.split('\n')
-    articles, chapters, refs = [], [], []
+    articles, chapters, refs, external_refs = [], [], [], []
 
     # 「（目的）」を前の行に置き、次の行を「第1条 本規則は…」で始める書式が多い。
     # 条文の本文を見出しとして拾ってしまわないよう、直前の括弧書きを見出し候補にする。
@@ -84,29 +144,56 @@ def parse(text):
                 pending_heading = None
                 continue
 
+        first_on_line = True
         for m in ART_RE.finditer(ln):
             n = kanji_to_int(m.group(1))
-            b = kanji_to_int(m.group(2)) if m.group(2) else None
+            branches = tuple(x for x in
+                             (kanji_to_int(g) for g in BRANCH_RE.findall(m.group(2)))
+                             if x is not None)
+            b = branches if branches else None
             if n is None:
                 continue
-            # 行頭にあれば条文の見出し、本文中にあれば参照とみなす
+
             head = ln[:m.start()].strip(' 　\t')
-            if head == '':
+
+            # 直前が法令名なら、この規程の条ではなく外部法令の引用
+            if EXT_LAW_RE.search(head):
+                external_refs.append({'num': n, 'branch': b, 'line': i,
+                                      'law': EXT_LAW_RE.search(head).group(0).strip(),
+                                      'context': stripped[:100]})
+                first_on_line = False
+                continue
+
+            # 行頭、または行頭が条見出しの括弧書きだけなら、条文の定義行。
+            # ただし直後が項番号や「から」なら参照なので除く。
+            follows_as_ref = bool(REF_FOLLOW_RE.match(ln[m.end():]))
+            is_def = (first_on_line
+                      and (head == '' or CAPTION_PREFIX_RE.match(head))
+                      and not follows_as_ref)
+            if is_def:
                 rest = ln[m.end():].strip(' 　\t')
                 inline = HEADING_ONLY_RE.match(rest)
-                if inline:                      # 第1条（目的） 本文…
+                if head and CAPTION_PREFIX_RE.match(head):   # （休職）第9条 本文…
+                    title = head.strip('（）() 　')
+                elif inline:                                  # 第1条（目的） 本文…
                     title = inline.group(1)
-                elif pending_heading:           # （目的）\n第1条 本文…
+                elif pending_heading:                         # （目的）\n第1条 本文…
                     title = pending_heading
                 else:
-                    title = rest.strip('（）()')[:40]
+                    body = rest.strip('（）()')
+                    title = f"（見出しなし）{body[:28]}" if body else "（見出しなし）"
                 articles.append({'num': n, 'branch': b, 'title': title[:40], 'line': i})
                 pending_heading = None
             else:
+                # 「第7条から第9条まで」の範囲参照を拾うため、後続の語も見る
+                tail = ln[m.end():m.end() + 12]
                 refs.append({'num': n, 'branch': b, 'line': i,
-                             'context': stripped[:80]})
+                             'range_to': bool(re.match(r'\s*(から|〜|～)', tail)),
+                             'para': para_of(ln, m.end()),
+                             'context': stripped[:100]})
+            first_on_line = False
 
-    return articles, chapters, refs
+    return articles, chapters, refs, external_refs
 
 
 def check_sequence(articles):
@@ -154,24 +241,40 @@ def check_sequence(articles):
     return issues
 
 
-def check_refs(articles, chapters, refs, text):
-    exist = {(a['num'], a['branch']) for a in articles}
-    exist_main = {a['num'] for a in articles}
-    dangling = []
+def check_refs(articles, chapters, refs, paras):
+    """内部参照を解決する。
+
+    「参照先が無い」だけでなく、**参照先が何の条か**を返すのが要点。
+    条番号は合っているが中身が違う参照（「第51条に基づき割増賃金」だが
+    第51条は手当の条、など）は、存在チェックでは絶対に見つからない。
+    見出しを並べて人が見比べられるようにする。"""
+    index = {(a['num'], a['branch']): a for a in articles}
+    main_index = {a['num']: a for a in articles if not a['branch']}
+
+    dangling, resolved, bad_para = [], [], []
     for r in refs:
         key = (r['num'], r['branch'])
-        if key in exist:
-            continue
-        # 「第5条の2」が無くても「第5条」があるなら枝番の書き分けの問題として扱う
-        if r['branch'] is not None and r['num'] in exist_main:
+        target = index.get(key)
+        if target is None and r['branch'] and r['num'] in main_index:
             dangling.append({**r, 'note': f'第{r["num"]}条はあるが枝番が見つからない'})
-        elif r['branch'] is None and r['num'] not in exist_main:
+            continue
+        if target is None and not r['branch']:
+            target = main_index.get(r['num'])
+        if target is None:
             dangling.append({**r, 'note': '参照先の条が見つからない'})
-    return dangling
+            continue
+
+        resolved.append({**r, 'title': target['title'], 'target_line': target['line']})
+
+        p = r.get('para')
+        if p:
+            mx = paras.get((target['num'], target['branch']), 1)
+            if p > mx:
+                bad_para.append({**r, 'title': target['title'],
+                                 'max': mx, 'want': p})
+    return dangling, resolved, bad_para
 
 
-# 別規程の名前はほぼ漢字・カタカナ・英数字でできている。ひらがなを外すことで
-# 「〜については別に定めるパートタイマー就業規則」のように前の文をのみ込むのを防ぐ。
 EXTERNAL_RE = re.compile(
     r'([一-龥ァ-ヴA-Za-z0-9０-９・ー]{2,20}?'
     r'(?:規程|規則|細則|要領|協定|マニュアル|ガイドライン|別表|様式))')
@@ -223,26 +326,30 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('path')
     ap.add_argument('--json', action='store_true')
+    ap.add_argument('--refs', action='store_true',
+                    help='内部参照の解決先を全件表示する（中身違いの参照を目視で探すため）')
     a = ap.parse_args()
 
     with open(a.path, encoding='utf-8', errors='replace') as f:
         text = f.read()
+    lines = text.split('\n')
 
-    articles, chapters, refs = parse(text)
+    articles, chapters, refs, external = parse(text)
+    paras = count_paragraphs(lines, articles)
     seq = check_sequence(articles)
-    dangling = check_refs(articles, chapters, refs, text)
-    self_titles = {c['title'] for c in chapters} | {a['title'] for a in articles}
-    external = find_external(text, self_titles)
+    dangling, resolved, bad_para = check_refs(articles, chapters, refs, paras)
+    self_titles = {c['title'] for c in chapters} | {x['title'] for x in articles}
+    ext_docs = find_external(text, self_titles)
     terms = check_terms(text)
 
-    result = {
-        'articles': len(articles), 'chapters': len(chapters),
-        'sequence_issues': seq, 'dangling_refs': dangling,
-        'external_refs': external, 'term_variants': terms,
-    }
-
     if a.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps({
+            'articles': len(articles), 'chapters': len(chapters),
+            'sequence_issues': seq, 'dangling_refs': dangling,
+            'paragraph_issues': bad_para, 'resolved_refs': resolved,
+            'external_law_refs': external, 'external_docs': ext_docs,
+            'term_variants': terms,
+        }, ensure_ascii=False, indent=2))
         return
 
     w = sys.stdout.write
@@ -256,30 +363,70 @@ def main():
 
     w("【条文一覧】\n")
     for x in articles:
-        w(f"  {fmt(x['num'], x['branch']):<10} {x['title']}\n")
+        p = paras.get((x['num'], x['branch']), 1)
+        w(f"  {fmt(x['num'], x['branch']):<12} {x['title']}"
+          f"{f'  [{p}項]' if p > 1 else ''}\n")
     w("\n")
 
     w(f"【条番号の不整合】 {len(seq)} 件\n")
-    for s in seq:
-        line = f" (行 {s['line']})" if 'line' in s else ''
-        w(f"  [{s['type']}] {s['article']}: {s['detail']}{line}\n")
+    for x in seq:
+        line = f" (行 {x['line']})" if 'line' in x else ''
+        w(f"  [{x['type']}] {x['article']}: {x['detail']}{line}\n")
     if not seq:
         w("  なし\n")
     w("\n")
 
     w(f"【参照先が見つからない内部参照】 {len(dangling)} 件\n")
+    seen = set()
     for d in dangling:
+        k = (d['line'], d['num'], d['branch'])
+        if k in seen:
+            continue
+        seen.add(k)
         w(f"  行 {d['line']}: {fmt(d['num'], d['branch'])} — {d['note']}\n")
         w(f"      > {d['context']}\n")
     if not dangling:
         w("  なし\n")
     w("\n")
 
-    w(f"【本文から参照されている別規程・別表】 {len(external)} 件\n")
+    w(f"【存在しない項への参照】 {len(bad_para)} 件\n")
+    for b in bad_para:
+        w(f"  行 {b['line']}: {fmt(b['num'], b['branch'])}第{b['want']}項"
+          f" — {b['title']} は第{b['max']}項までしかない\n")
+        w(f"      > {b['context']}\n")
+    if not bad_para:
+        w("  なし\n")
+    w("  ※ 項数は本文の項番号から数えた目安。箇条書きと紛れることがあるので原文で確認すること\n\n")
+
+    w(f"【内部参照の解決先】 {len(resolved)} 件\n")
+    w("  ※ **条番号は合っているが中身が違う参照**は、ここを読まないと見つからない。\n")
+    w("     参照元の文意と、参照先の見出しが噛み合っているか必ず目で確かめること。\n")
+    show = resolved if a.refs else resolved[:25]
+    for r in show:
+        para = f"第{r['para']}項" if r.get('para') else ""
+        w(f"  行 {r['line']}: {fmt(r['num'], r['branch'])}{para}"
+          f" → 「{r['title']}」\n")
+        w(f"      > {r['context']}\n")
+    if not a.refs and len(resolved) > 25:
+        w(f"  … 他 {len(resolved) - 25} 件。全件見るには --refs\n")
+    if not resolved:
+        w("  なし\n")
+    w("\n")
+
+    if external:
+        w(f"【外部法令への参照】 {len(external)} 件（内部参照とは区別済み）\n")
+        agg = {}
+        for e in external:
+            agg.setdefault((e['law'], e['num'], e['branch']), []).append(e['line'])
+        for (law, n, b), ls in sorted(agg.items()):
+            w(f"  {law}{fmt(n, b)}  (行 {', '.join(str(x) for x in sorted(set(ls))[:5])})\n")
+        w("  ※ 引用している法令の条番号が改正でずれていないか、fetch_law.py で確認すること\n\n")
+
+    w(f"【本文から参照されている別規程・別表】 {len(ext_docs)} 件\n")
     w("  ※ 手元に無いものは、内容を確認できない旨をレポートに書くこと\n")
-    for name, c in external:
+    for name, c in ext_docs:
         w(f"  {name} ({c} 箇所)\n")
-    if not external:
+    if not ext_docs:
         w("  なし\n")
     w("\n")
 

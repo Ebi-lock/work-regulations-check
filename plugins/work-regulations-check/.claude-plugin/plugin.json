@@ -1,11 +1,19 @@
 {
   "name": "work-regulations-check",
   "description": "日本の就業規則を労働基準法などの法令に照らして点検する。e-Gov法令検索から条文を、厚生労働省から改正情報とモデル就業規則の規程例を取得して根拠にします。",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Ebi-Lock"
   },
   "homepage": "https://github.com/Ebi-lock/work-regulations-check",
   "license": "MIT",
-  "keywords": ["japan", "labor-law", "hr", "compliance", "就業規則", "労働基準法", "社内規程"]
+  "keywords": [
+    "japan",
+    "labor-law",
+    "hr",
+    "compliance",
+    "就業規則",
+    "労働基準法",
+    "社内規程"
+  ]
 }
