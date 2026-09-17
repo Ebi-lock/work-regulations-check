@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "work-regulations-check",
+  "description": "日本の労務・人事向け Claude Code プラグイン集。就業規則などの社内規程を、e-Gov法令検索と厚生労働省の資料を根拠に点検します。",
+  "owner": {
+    "name": "Ebi-Lock"
+  },
+  "plugins": [
+    {
+      "name": "work-rules-check",
+      "description": "日本の就業規則（Word/PDF/テキスト）を労働基準法などに照らして点検し、必須記載事項の漏れ・違法やリスクのある条項・法改正への未対応・形式面の不整合をレポートにまとめます。根拠は e-Gov法令検索から条文を取得し、修正案は厚生労働省モデル就業規則の規程例に合わせます。法的助言ではなく、社労士・弁護士に相談する前の一次スクリーニングです。",
+      "author": {
+        "name": "Ebi-Lock"
+      },
+      "source": "./plugins/work-rules-check",
+      "category": "productivity",
+      "homepage": "https://github.com/Ebi-lock/work-regulations-check/tree/main/plugins/work-rules-check"
+    }
+  ]
+}
