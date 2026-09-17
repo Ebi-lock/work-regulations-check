@@ -1,7 +1,7 @@
 {
   "name": "work-regulations-check",
   "description": "日本の就業規則を、厚生労働省モデル就業規則と e-Gov法令検索をもとに作成し、労働基準法などの法令に照らして点検する。",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": {
     "name": "Ebi-Lock"
   },
