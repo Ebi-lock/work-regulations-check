@@ -112,6 +112,8 @@ def ensure(key, refresh=False):
 # --- モデル就業規則の解析（規程例が表のセルに入っている） -------------------
 
 CAPTION_RE = re.compile(r'^（([^（）。、]{1,30})）')
+# 解説中の「（参考）」「（注）」なども括弧書きなので拾ってしまう。条見出しではないので外す。
+NOT_A_CAPTION = {'参考', '注', '例', '注意', '備考', '再掲', '抜粋', '解説'}
 NUM_RE = re.compile(r'第\s*([０-９0-9]+)\s*条')
 TOC_RE = re.compile(r'^第\s*([０-９0-9]+)\s*条\s*（([^（）]{1,30})）\s*$')
 
@@ -136,6 +138,8 @@ def parse_model(lines):
         cell = ln.strip('| ').strip()
         m = CAPTION_RE.match(cell)
         if not m:
+            continue
+        if m.group(1).strip() in NOT_A_CAPTION:
             continue
         nm = NUM_RE.search(cell[m.end():m.end() + 40])
         body = []

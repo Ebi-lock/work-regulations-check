@@ -9,7 +9,7 @@
 
 | プラグイン | 内容 |
 |---|---|
-| [work-regulations-check](./plugins/work-regulations-check) | 就業規則を労働基準法などに照らして点検し、必須記載事項の漏れ・違法やリスクのある条項・法改正への未対応・形式面の不整合をレポートにまとめる |
+| [work-regulations-check](./plugins/work-regulations-check) | 就業規則を**作る**（厚労省モデル就業規則の規程例をもとに聞き取って条文を組み立てる）／**点検する**（必要記載事項の漏れ・違法やリスクのある条項・法改正への未対応・形式面の不整合をレポートにまとめる）の2スキル |
 
 ## インストール
 
@@ -20,9 +20,10 @@ Claude Code で次を実行します。
 /plugin install work-regulations-check@work-regulations-check
 ```
 
-あとは就業規則のファイルを指して話しかけるだけです。
+あとは話しかけるだけです。
 
 ```
+就業規則を作りたい
 就業規則.pdf をチェックして
 この規程、法改正に対応できてる？
 ```
