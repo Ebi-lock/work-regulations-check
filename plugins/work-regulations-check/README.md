@@ -1,4 +1,4 @@
-# work-rules-check
+# work-regulations-check
 
 日本の就業規則を、労働基準法をはじめとする労働関係法令に照らして点検する Claude Code スキル。
 
@@ -43,7 +43,7 @@ e-Gov で現行法を確認    条文の原文（そのまま引用できる文�
 
 ```
 /plugin marketplace add OWNER/REPO
-/plugin install work-rules-check@REPO
+/plugin install work-regulations-check@REPO
 ```
 
 ## 使い方
