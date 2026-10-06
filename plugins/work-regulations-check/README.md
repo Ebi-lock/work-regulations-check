@@ -137,13 +137,26 @@ e-Gov で現行法を確認    条文の原文（そのまま引用できる文�
 厚労省法令等データベースと安全衛生情報センター（JAISH）の通達を引けるようになります。
 
 ```
-claude mcp add labor-law -s user -- npx -y labor-law-mcp
+claude mcp add labor-law -s user -- npx -y labor-law-mcp@0.2.1
 ```
 
 スキルは MCP の有無を見て動きを変えます。入れなくても動作します（通達を根拠にしたい指摘が
 「要確認」に回るだけです）。
 
 なお、これは第三者が公開しているパッケージです。導入は各自の判断で行ってください。
+
+## 通信と保存するファイル
+
+- **通信先**: 次の2か所だけです。APIキーは不要です
+  - e-Gov法令API（`https://laws.e-gov.go.jp`）: `fetch_law.py` が法令名・条番号を送って条文を取得
+  - 厚生労働省（`https://www.mhlw.go.jp`）: `model_rules.py` がモデル就業規則・規定例を、`mhlw_bills.py` が国会提出法案の概要PDFを取得
+- **就業規則の内容や聞き取りの回答は外部に送りません**。スクリプトが送るのは法令・資料の取得条件だけです
+- **書き出すファイル**:
+  - 取得した資料のキャッシュ: `~/.cache/egov-laws`、`~/.cache/mhlw-model-rules`、`~/.cache/mhlw-bills`
+  - 聞き取りの進行状況: 指定した作業ディレクトリの `hearing.json` と、その場所を覚えておく `~/.cache/work-rules-intake`
+  - 作成・点検の結果: 指定した出力先
+
+不要になったら `~/.cache` の上記フォルダを削除してください。
 
 ## 免責
 
