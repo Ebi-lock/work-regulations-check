@@ -114,8 +114,10 @@ e-Gov で現行法を確認    条文の原文（そのまま引用できる文�
 | `mhlw_bills.py` | 厚労省の国会提出法案から改正の概要PDFを取得 |
 | `model_rules.py` | 厚労省の規程例から条文案と解説を引く。モデル就業規則と育児・介護休業等の規定例の両方に対応 |
 
-2つのスキルはスクリプトを共有しています（`skills/work-regulations-draft/scripts` は
-`work-regulations-check/scripts` へのシンボリックリンク）。片方だけ更新される事故を防ぐためです。
+2つのスキルは同じスクリプトを持っています（`skills/work-regulations-draft/scripts` は
+`work-regulations-check/scripts` の複製）。プラグインの読み込みでシンボリックリンクが使えないためです。
+スクリプトを直したら両方にコピーしてください。聞き取りの質問バンク（`questions.json`）は
+`work-regulations-check/references` に1つだけ置き、両方のスキルからそれを参照します。
 
 参照ファイル（`references/`）に、必須記載事項のチェックリスト、リスク条項のパターン集、
 法改正の一覧と判定手順、根拠の引き方、聞き取り項目、章立てと別規程の切り分けをまとめてあります。
